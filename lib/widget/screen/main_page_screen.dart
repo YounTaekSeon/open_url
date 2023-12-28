@@ -24,56 +24,75 @@ class MainPageScreen extends StatelessWidget {
 }
 
 class _Body extends DefaultBody {
-  WebViewController _controller = WebViewController();
-
   _Body({Key? key}) : super(key: key);
 
   @override
   Widget buildBody(BuildContext context) {
+    WebViewController webViewController = WebViewController();
+
     return SafeArea(
       child: Scaffold(
-        floatingActionButton: FloatingActionButton(
-            child: Icon(Icons.keyboard_backspace_rounded),
-            onPressed: () {
-              _moveToBackPage();
-            }),
+        floatingActionButton: floatBackButton(webViewController),
         body: Column(
           children: [
-            Expanded(child: DeviceInfo(_controller)),
+            Expanded(child: DeviceInfo(webViewController)),
           ],
         ),
       ),
     );
   }
 
+  Widget floatBackButton(WebViewController webViewController) {
+    if (Platform.isIOS) {
+      return FloatingActionButton(
+        child: const Icon(Icons.keyboard_backspace_rounded),
+        onPressed: () {
+          _moveToBackPage(webViewController);
+        },
+      );
+    } else {
+      return Container();
+    }
+  }
+
   DateTime? currentBackPressTime;
 
-  void _moveToBackPage() async {
+  void _moveToBackPage(WebViewController _controller) async {
     DateTime now = DateTime.now();
 
     if (await _controller.canGoBack()) {
       _controller.goBack();
     } else {
       if (currentBackPressTime != null) {
-        if (now.difference(currentBackPressTime!) < Duration(seconds: 3)) {
+        if (now.difference(currentBackPressTime!) < Duration(seconds: 2)) {
           exit(0);
         } else {
-          Fluttertoast.showToast(msg: "뒤로가기 버튼을 한번 더 누르면 종료됩니다");
+          showToastMessage();
           currentBackPressTime = now;
         }
       } else {
-        Fluttertoast.showToast(msg: "뒤로가기 버튼을 한번 더 누르면 종료됩니다");
+        showToastMessage();
         currentBackPressTime = now;
       }
     }
   }
+
+  Future<bool?> showToastMessage() {
+    String morePressButton = "뒤로가기 버튼을 한번 더 누르면 종료됩니다";
+    return Fluttertoast.showToast(
+        msg: morePressButton,
+        timeInSecForIosWeb: 2,
+        toastLength: Toast.LENGTH_SHORT,);
+  }
 }
 
 class DeviceInfo extends DefaultBody {
-  WebViewController _controller;
-  late DeviceBloc deviceBloc;
+  WebViewController webViewController;
 
-  DeviceInfo(this._controller, {Key? key}) : super(key: key);
+  DeviceInfo(this.webViewController, {Key? key}) : super(key: key);
+
+  DateTime? currentBackPressTime;
+  late DeviceBloc deviceBloc;
 
   @override
   void onStart(Duration timeStamp) {
@@ -85,38 +104,44 @@ class DeviceInfo extends DefaultBody {
     deviceBloc.getDeviceInfo();
   }
 
-  Future<bool> _future(DateTime? currentBackPressTime) async {
+  Future<bool> pressBackButton() async {
     DateTime now = DateTime.now();
 
-    if (await _controller.canGoBack()) {
-      _controller.goBack();
+    if (await webViewController.canGoBack()) {
+      webViewController.goBack();
       return Future(() => false);
     } else {
       if (currentBackPressTime != null) {
-        if (now.difference(currentBackPressTime!) < Duration(seconds: 3)) {
+        if (now.difference(currentBackPressTime!) < const Duration(seconds: 2)) {
           return Future(() => true);
         } else {
-          Fluttertoast.showToast(msg: "뒤로가기 버튼을 한번 더 누르면 종료됩니다");
+          showToastMessage();
           currentBackPressTime = now;
           return Future(() => false);
         }
-      }       
-
-    else {
-        Fluttertoast.showToast(msg: "뒤로가기 버튼을 한번 더 누르면 종료됩니다");
+      } else {
+        showToastMessage();
         currentBackPressTime = now;
         return Future(() => false);
       }
     }
   }
 
+  Future<bool?> showToastMessage() {
+    String morePressButton = "뒤로가기 버튼을 한번 더 누르면 종료됩니다";
+    return Fluttertoast.showToast(
+        msg: morePressButton,
+        timeInSecForIosWeb: 2,
+        toastLength: Toast.LENGTH_SHORT,
+    );
+  }
+
   @override
   Widget buildBody(BuildContext context) {
-    DateTime? currentBackPressTime;
 
     return WillPopScope(
       onWillPop: () {
-        return _future(currentBackPressTime);
+        return pressBackButton();
       },
       child: BlocBuilder<DeviceBloc, List<String>>(
         builder: (buildContext, result) {
@@ -127,7 +152,7 @@ class DeviceInfo extends DefaultBody {
             String BASE_URL = "http://mtecsoft.co.kr:5800/pms/mobile/HpCheck.do?hpAuthNum=$phoneNum&model=$model&uniqueNum=$uniqueNum";
             _setController(BASE_URL);
 
-            return WebViewWidget(controller: _controller);
+            return WebViewWidget(controller: webViewController);
           } else {
             return const Center(child: CircularProgressIndicator());
           }
@@ -139,7 +164,7 @@ class DeviceInfo extends DefaultBody {
   void _setController(String BASE_URL) {
     Uri url = Uri.parse(BASE_URL);
 
-    _controller
+    webViewController
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
       ..setNavigationDelegate(
@@ -149,10 +174,10 @@ class DeviceInfo extends DefaultBody {
               const CircularProgressIndicator();
             }
           },
-          // onPageStarted: (String url) {
-          // },
-          onPageFinished: (String url) {},
-          onWebResourceError: (WebResourceError error) {},
+          // onPageFinished: (String url) {},
+          onWebResourceError: (WebResourceError error) {
+            Fluttertoast.showToast(msg: error.description);
+          },
           onNavigationRequest: (NavigationRequest request) async {
             if (request.url.contains("tel:")) {
               await launchUrl(Uri.parse(request.url));
